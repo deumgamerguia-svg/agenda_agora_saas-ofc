@@ -22,8 +22,8 @@ const reservationSchema = serviceProfessionalsSchema.extend({
 
 const LOGO_BUCKET = "business-logos";
 const SIGNED_URL_TTL_SECONDS = 60 * 60 * 6;
-const FALLBACK_SUPABASE_URL = "https://qagotnmdqjoodoudcikd.supabase.co";
-const FALLBACK_PUBLISHABLE_KEY = "sb_publishable_ahOK_X2idzT_9V00g-guZQ_FZ_eScZj";
+const FALLBACK_SUPABASE_URL = "https://tgpudzbnztxeydhupihi.supabase.co";
+const FALLBACK_PUBLISHABLE_KEY = "sb_publishable_YSyGtBAb5b_TRv738YR-hw_gcnkyw1w";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 type PublicBusiness = {

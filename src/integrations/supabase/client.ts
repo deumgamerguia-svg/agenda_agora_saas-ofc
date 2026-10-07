@@ -3,8 +3,8 @@ import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 import { brokeredPreviewStorage } from './previewAuthStorage';
 
-const CONNECTED_PROJECT_URL = 'https://qagotnmdqjoodoudcikd.supabase.co';
-const CONNECTED_PUBLISHABLE_KEY = 'sb_publishable_ahOK_X2idzT_9V00g-guZQ_FZ_eScZj';
+const CONNECTED_PROJECT_URL = 'https://tgpudzbnztxeydhupihi.supabase.co';
+const CONNECTED_PUBLISHABLE_KEY = 'sb_publishable_YSyGtBAb5b_TRv738YR-hw_gcnkyw1w';
 
 function isNewSupabaseApiKey(value: string): boolean {
   return value.startsWith('sb_publishable_') || value.startsWith('sb_secret_');
