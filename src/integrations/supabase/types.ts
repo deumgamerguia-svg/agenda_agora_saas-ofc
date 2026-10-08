@@ -14,21 +14,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      _mig_tmp: {
-        Row: {
-          id: number | null
-          sql: string | null
-        }
-        Insert: {
-          id?: number | null
-          sql?: string | null
-        }
-        Update: {
-          id?: number | null
-          sql?: string | null
-        }
-        Relationships: []
-      }
       agpay_webhook_events: {
         Row: {
           attempts: number
