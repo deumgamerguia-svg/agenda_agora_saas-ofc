@@ -1,74 +1,44 @@
 import { createFileRoute } from "@tanstack/react-router";
 import {
-  sendBookingExtraReminder,
+  isReminderDue,
   sendBookingReminder,
+  sendExtraBookingReminder,
 } from "@/lib/whatsapp-notify.server";
-import { loadPanel1ConfigServer } from "@/lib/panel1-config.server";
+import { loadPanel1Config } from "@/lib/panel1-config.storage";
+import { authenticateCronRequest } from "@/integrations/supabase/cron-auth";
 
+// Agendador de lembretes de WhatsApp: chamado pelo cron da infraestrutura a cada hora.
+// Envia o lembrete para agendamentos confirmados cuja janela de aviso abriu
+// (starts_at <= agora + reminder_hours_before) e que ainda não foram lembrados.
 export const Route = createFileRoute("/api/public/hooks/whatsapp-reminders")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const auth = request.headers.get("authorization");
-        const token = auth?.replace(/^Bearer\s+/i, "");
-        const secret = process.env["CRON_SECRET"];
-        if (!secret || token !== secret) {
-          return Response.json({ error: "Não autorizado." }, { status: 401 });
-        }
+        const authError = await authenticateCronRequest(request);
+        if (authError) return authError;
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
         const now = new Date();
-
-        // Não depende de booking_preferences no Postgres. As preferências avançadas
-        // vêm do mesmo arquivo usado pelo Painel 2 e pelo Painel 1.
-        const { data: businesses, error: bizErr } = await (supabaseAdmin.from("businesses") as any)
-          .select("*")
-          .eq("whatsapp_status", "conectado")
-          .not("whatsapp_instance", "is", null)
+        const { data: businesses, error: bizErr } = await supabaseAdmin
+          .from("businesses")
+          .select("id, reminder_hours_before")
+          .eq("reminder_enabled", true)
           .eq("status", "ativo");
-
         if (bizErr) {
           return Response.json({ error: bizErr.message }, { status: 500 });
         }
 
         let sent = 0;
         let failed = 0;
-        let extraSent = 0;
-        let enabledBusinesses = 0;
-
-        const register = async (
-          businessId: string,
-          appointmentId: string,
-          channel: "whatsapp" | "whatsapp_extra",
-          status: "enviado" | "erro",
-          error?: unknown,
-        ) => {
-          await supabaseAdmin.from("reminder_logs").upsert(
-            {
-              business_id: businessId,
-              appointment_id: appointmentId,
-              channel,
-              status,
-              error:
-                status === "erro"
-                  ? error instanceof Error
-                    ? error.message
-                    : String(error)
-                  : null,
-            },
-            { onConflict: "appointment_id,channel" },
-          );
-        };
 
         for (const biz of businesses ?? []) {
-          const config = await loadPanel1ConfigServer(supabaseAdmin, biz.id);
-          if (!config.preferences.notify_clients) continue;
-          enabledBusinesses++;
-
-          const mainMinutes = Math.max(1, config.preferences.reminder_hours_before) * 60;
-          const extraMinutes = Math.max(0, config.preferences.extra_reminder_minutes);
-          const maxWindowMinutes = Math.max(mainMinutes, extraMinutes);
-          const windowEnd = new Date(now.getTime() + maxWindowMinutes * 60_000);
+          const { preferences } = await loadPanel1Config(supabaseAdmin, biz.id);
+          const hoursBefore = biz.reminder_hours_before ?? 24;
+          const extraMinutes = preferences.extra_reminder_minutes;
+          const windowEnd = new Date(
+            now.getTime() + Math.max(hoursBefore * 60, extraMinutes) * 60_000,
+          );
 
           const { data: appts } = await supabaseAdmin
             .from("appointments")
@@ -77,54 +47,52 @@ export const Route = createFileRoute("/api/public/hooks/whatsapp-reminders")({
             .in("status", ["agendado", "confirmado"])
             .gt("starts_at", now.toISOString())
             .lte("starts_at", windowEnd.toISOString());
-
           if (!appts?.length) continue;
 
-          const ids = appts.map((appointment) => appointment.id);
+          const ids = appts.map((a) => a.id);
           const { data: logs } = await supabaseAdmin
             .from("reminder_logs")
-            .select("appointment_id, channel, status")
-            .in("channel", ["whatsapp", "whatsapp_extra"])
+            .select("appointment_id, channel")
+            .in("channel", ["whatsapp", "whatsapp-extra"])
             .in("appointment_id", ids);
-
-          const mainAlreadySent = new Set(
-            (logs ?? [])
-              .filter((log) => log.channel === "whatsapp" && log.status === "enviado")
-              .map((log) => log.appointment_id),
-          );
-          const extraAlreadySent = new Set(
-            (logs ?? [])
-              .filter((log) => log.channel === "whatsapp_extra" && log.status === "enviado")
-              .map((log) => log.appointment_id),
-          );
+          const alreadySent = new Set((logs ?? []).map((l) => `${l.appointment_id}:${l.channel}`));
 
           for (const appt of appts) {
-            const startsAtMs = new Date(appt.starts_at).getTime();
-            const minutesUntil = (startsAtMs - now.getTime()) / 60_000;
-
-            if (minutesUntil <= mainMinutes && !mainAlreadySent.has(appt.id)) {
+            const appointment = appt as { id: string; starts_at: string };
+            const due = [
+              {
+                channel: "whatsapp",
+                shouldSend: isReminderDue(appointment.starts_at, now, hoursBefore * 60),
+                send: () => sendBookingReminder(appt.id),
+              },
+              {
+                channel: "whatsapp-extra",
+                shouldSend:
+                  extraMinutes > 0 && isReminderDue(appointment.starts_at, now, extraMinutes),
+                send: () => sendExtraBookingReminder(appt.id, preferences.extra_reminder_template),
+              },
+            ];
+            for (const reminder of due) {
+              if (!reminder.shouldSend || alreadySent.has(`${appt.id}:${reminder.channel}`))
+                continue;
               try {
-                await sendBookingReminder(appt.id);
-                await register(biz.id, appt.id, "whatsapp", "enviado");
+                await reminder.send();
+                await supabaseAdmin.from("reminder_logs").insert({
+                  business_id: biz.id,
+                  appointment_id: appt.id,
+                  channel: reminder.channel,
+                  status: "enviado",
+                });
                 sent++;
               } catch (err) {
                 failed++;
-                await register(biz.id, appt.id, "whatsapp", "erro", err);
-              }
-            }
-
-            if (
-              extraMinutes > 0 &&
-              minutesUntil <= extraMinutes &&
-              !extraAlreadySent.has(appt.id)
-            ) {
-              try {
-                await sendBookingExtraReminder(appt.id);
-                await register(biz.id, appt.id, "whatsapp_extra", "enviado");
-                extraSent++;
-              } catch (err) {
-                failed++;
-                await register(biz.id, appt.id, "whatsapp_extra", "erro", err);
+                await supabaseAdmin.from("reminder_logs").insert({
+                  business_id: biz.id,
+                  appointment_id: appt.id,
+                  channel: reminder.channel,
+                  status: "erro",
+                  error: err instanceof Error ? err.message : String(err),
+                });
               }
             }
           }
@@ -133,9 +101,8 @@ export const Route = createFileRoute("/api/public/hooks/whatsapp-reminders")({
         return Response.json({
           ok: true,
           sent,
-          extraSent,
           failed,
-          businesses: enabledBusinesses,
+          businesses: businesses?.length ?? 0,
           ranAt: now.toISOString(),
         });
       },

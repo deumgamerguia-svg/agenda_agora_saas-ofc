@@ -1,330 +1,219 @@
-import { useEffect, useState } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMutation } from "@tanstack/react-query";
-import {
-  Clock3,
-  Copy,
-  ExternalLink,
-  Link2,
-  Paintbrush,
-  Save,
-  Scissors,
-  Store,
-  UsersRound,
-} from "lucide-react";
-import { toast } from "@/lib/toast";
-import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
+import { friendlyError } from "@/lib/error-page";
+import { createFileRoute } from "@tanstack/react-router";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { toast } from "sonner";
+import { Pencil, Store } from "lucide-react";
 import { useBusiness, type Business } from "@/lib/business";
-import { categoryLabel } from "@/lib/format";
+import { CATEGORIES, categoryLabel } from "@/lib/format";
+import { updateBusinessProfile } from "@/lib/business.functions";
+import { PageHeader, EmptyList } from "@/components/painel/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export const Route = createFileRoute("/_authenticated/painel/negocios")({
   head: () => ({
     meta: [
       { title: "Negócio — Agenda Agora" },
-      {
-        name: "description",
-        content: "Configure as informações exibidas na página pública do estabelecimento.",
-      },
+      { name: "description", content: "Edite os dados do seu estabelecimento." },
     ],
   }),
   component: NegociosPage,
 });
 
-const sanitizeSlug = (value: string) =>
-  value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9-]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/(^-|-$)/g, "")
-    .slice(0, 60);
+type Form = {
+  businessId: string;
+  name: string;
+  slug: string;
+  category: string;
+  phone: string;
+  address: string;
+};
+
+const formFrom = (b: Business): Form => ({
+  businessId: b.id,
+  name: b.name,
+  slug: b.slug,
+  category: b.category,
+  phone: b.phone ?? "",
+  address: b.address ?? "",
+});
 
 function NegociosPage() {
-  const { businesses, refresh } = useBusiness();
-
-  return (
-    <div className="negocios-premium mx-auto w-full max-w-5xl space-y-3">
-      <section className="professional-list-panel">
-        <div className="professional-segmented-header">
-          <button type="button" className="is-active">
-            Negócio
-          </button>
-          <button type="button" disabled>
-            Painel 1
-          </button>
-        </div>
-
-        <div className="relative z-10 border-b border-[#25272d] px-4 py-4 sm:px-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="professional-icon-box !size-9">
-                <Store className="size-4" strokeWidth={1.8} />
-              </div>
-              <div>
-                <h1 className="text-[0.98rem] font-semibold text-[#eef0f4]">
-                  Configuração do negócio
-                </h1>
-                <p className="mt-0.5 text-xs text-[#62656e]">
-                  Controle as informações e o link exibidos no Painel 1.
-                </p>
-              </div>
-            </div>
-
-            <Button className="professional-primary-button" asChild>
-              <Link to="/painel/configuracoes" search={{ secao: "aparencia" }}>
-                <Paintbrush className="size-4" />
-                Visual do Painel 1
-              </Link>
-            </Button>
-          </div>
-        </div>
-
-        {businesses.length === 0 ? (
-          <div className="professional-empty-state">
-            <div className="professional-icon-box !size-14">
-              <Store className="size-6" />
-            </div>
-            <h3>Nenhum negócio vinculado</h3>
-            <p>Seu acesso ainda não foi vinculado a um estabelecimento pelo Painel 3 / Master.</p>
-          </div>
-        ) : (
-          <div className="relative z-10 p-4 sm:p-5">
-            <div className="grid gap-2 sm:grid-cols-3">
-              <Button
-                className="professional-secondary-button w-full justify-start"
-                variant="outline"
-                asChild
-              >
-                <Link to="/painel/servicos">
-                  <Scissors className="size-4" />
-                  Serviços
-                </Link>
-              </Button>
-              <Button
-                className="professional-secondary-button w-full justify-start"
-                variant="outline"
-                asChild
-              >
-                <Link to="/painel/profissionais">
-                  <UsersRound className="size-4" />
-                  Profissionais
-                </Link>
-              </Button>
-              <Button
-                className="professional-secondary-button w-full justify-start"
-                variant="outline"
-                asChild
-              >
-                <Link to="/painel/funcionamento">
-                  <Clock3 className="size-4" />
-                  Funcionamento
-                </Link>
-              </Button>
-            </div>
-
-            <div className="mt-4 grid gap-4 lg:grid-cols-2">
-              {businesses.map((business) => (
-                <BusinessSettingsCard key={business.id} business={business} onSaved={refresh} />
-              ))}
-            </div>
-          </div>
-        )}
-      </section>
-    </div>
-  );
-}
-
-function BusinessSettingsCard({ business, onSaved }: { business: Business; onSaved: () => void }) {
-  const [form, setForm] = useState({
-    name: business.name,
-    slug: business.slug,
-    category: business.category,
-    phone: business.phone ?? "",
-    address: business.address ?? "",
-  });
-
-  useEffect(() => {
-    setForm({
-      name: business.name,
-      slug: business.slug,
-      category: business.category,
-      phone: business.phone ?? "",
-      address: business.address ?? "",
-    });
-  }, [
-    business.id,
-    business.name,
-    business.slug,
-    business.category,
-    business.phone,
-    business.address,
-  ]);
+  const { businesses, applyUpdatedBusiness } = useBusiness();
+  const queryClient = useQueryClient();
+  const saveFn = useServerFn(updateBusinessProfile);
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState<Form | null>(null);
 
   const save = useMutation({
-    mutationFn: async () => {
-      const slug = sanitizeSlug(form.slug);
-      if (slug.length < 3) throw new Error("O link público precisa ter pelo menos 3 caracteres.");
-      const { error } = await supabase
-        .from("businesses")
-        .update({
-          name: form.name.trim(),
-          slug,
-          category: form.category.trim() || "outro",
-          phone: form.phone.trim() || null,
-          address: form.address.trim() || null,
-        })
-        .eq("id", business.id);
-      if (error) throw error;
+    mutationFn: () => saveFn({ data: form! }),
+    onSuccess: (updated) => {
+      toast.success("Dados do negócio atualizados!");
+      setOpen(false);
+      setForm(null);
+      // Usa a linha salva para o cartão do link público mudar sem esperar o refetch.
+      applyUpdatedBusiness(updated);
+      void queryClient.invalidateQueries({ queryKey: ["public-business"] });
     },
-    onSuccess: () => {
-      toast.success("Informações do Painel 1 atualizadas.");
-      onSaved();
-    },
-    onError: (error: Error) => {
-      if (/duplicate|unique/i.test(error.message)) {
-        toast.error("Esse link público já está sendo usado por outro estabelecimento.");
-      } else {
-        toast.error(error.message);
-      }
-    },
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
-  const copyPublicLink = async () => {
-    const path = `/agendar/${business.slug}`;
-    try {
-      await navigator.clipboard.writeText(`${window.location.origin}${path}`);
-      toast.success("Link do Painel 1 copiado.");
-    } catch {
-      toast.error("Não foi possível copiar o link.");
-    }
+  const edit = (b: Business) => {
+    setForm(formFrom(b));
+    setOpen(true);
   };
 
   return (
-    <article className="professional-form-section">
-      <div className="flex items-start gap-3">
-        <div className="professional-avatar">
-          <Store className="size-4" strokeWidth={1.8} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <h2 className="truncate text-sm font-semibold text-[#eef0f3]">{business.name}</h2>
-          <span className="professional-badge mt-1.5">{categoryLabel(business.category)}</span>
-        </div>
-      </div>
+    <div>
+      <PageHeader
+        title="Negócio"
+        subtitle="Edite as informações públicas do seu estabelecimento."
+      />
 
-      <div className="mt-5 space-y-4">
-        <div className="space-y-2">
-          <Label className="professional-section-label" htmlFor={`business-name-${business.id}`}>
-            Nome exibido no Painel 1
-          </Label>
-          <Input
-            className="professional-input"
-            id={`business-name-${business.id}`}
-            value={form.name}
-            onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label className="professional-section-label" htmlFor={`business-slug-${business.id}`}>
-            Link público editável
-          </Label>
-          <div className="flex items-center gap-2">
-            <span className="shrink-0 text-xs text-[#646771]">/agendar/</span>
-            <Input
-              className="professional-input"
-              id={`business-slug-${business.id}`}
-              value={form.slug}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, slug: sanitizeSlug(event.target.value) }))
-              }
-              placeholder="meu-estabelecimento"
-            />
-          </div>
-          <p className="text-xs leading-relaxed text-[#5f626b]">
-            Ao alterar e salvar, o link antigo deixa de ser o endereço principal.
-          </p>
-        </div>
-
-        <div className="space-y-2">
-          <Label
-            className="professional-section-label"
-            htmlFor={`business-category-${business.id}`}
-          >
-            Categoria
-          </Label>
-          <Input
-            className="professional-input"
-            id={`business-category-${business.id}`}
-            value={form.category}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, category: event.target.value }))
-            }
-          />
-        </div>
-
+      {businesses.length === 0 ? (
+        <EmptyList text="Seu acesso ainda não foi vinculado a um estabelecimento pelo painel Master." />
+      ) : (
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label className="professional-section-label" htmlFor={`business-phone-${business.id}`}>
-              Telefone
-            </Label>
-            <Input
-              className="professional-input"
-              id={`business-phone-${business.id}`}
-              value={form.phone}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, phone: event.target.value }))
-              }
-            />
-          </div>
-          <div className="space-y-2">
-            <Label
-              className="professional-section-label"
-              htmlFor={`business-address-${business.id}`}
-            >
-              Endereço
-            </Label>
-            <Input
-              className="professional-input"
-              id={`business-address-${business.id}`}
-              value={form.address}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, address: event.target.value }))
-              }
-            />
-          </div>
+          {businesses.map((b) => (
+            <article key={b.id} className="surface p-5">
+              <div className="flex items-start gap-3">
+                <span className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <Store className="size-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h2 className="font-bold">{b.name}</h2>
+                  <p className="text-xs text-muted-foreground">{categoryLabel(b.category)}</p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => edit(b)}
+                  aria-label={`Editar ${b.name}`}
+                >
+                  <Pencil className="size-4" />
+                </Button>
+              </div>
+              <dl className="mt-5 space-y-2 text-sm text-muted-foreground">
+                {b.phone && <dd>{b.phone}</dd>}
+                {b.address && <dd>{b.address}</dd>}
+                <dd className="text-xs">Link público: /agendar/{b.slug}</dd>
+              </dl>
+            </article>
+          ))}
         </div>
-      </div>
+      )}
 
-      <div className="mt-5 flex flex-wrap gap-2">
-        <Button
-          className="professional-primary-button"
-          onClick={() => save.mutate()}
-          disabled={save.isPending || !form.name.trim() || sanitizeSlug(form.slug).length < 3}
-        >
-          <Save className="size-4" /> {save.isPending ? "Salvando..." : "Salvar"}
-        </Button>
-        <Button className="professional-secondary-button" variant="outline" asChild>
-          <a href={`/agendar/${business.slug}`} target="_blank" rel="noreferrer">
-            <ExternalLink className="size-4" /> Abrir Painel 1
-          </a>
-        </Button>
-        <Button
-          className="professional-secondary-button"
-          variant="outline"
-          onClick={() => void copyPublicLink()}
-        >
-          <Copy className="size-4" /> Copiar link
-        </Button>
-      </div>
-
-      <div className="professional-info-box mt-4">
-        <Link2 className="size-4 shrink-0 text-[#5d9cff]" />
-        <span className="truncate">Link atual: /agendar/{business.slug}</span>
-      </div>
-    </article>
+      <Dialog
+        open={open}
+        onOpenChange={(v) => {
+          setOpen(v);
+          if (!v) setForm(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar negócio</DialogTitle>
+          </DialogHeader>
+          {form && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="bname">Nome do estabelecimento</Label>
+                <Input
+                  id="bname"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="bslug">Link público</Label>
+                <div className="flex items-center gap-1">
+                  <span className="text-sm text-muted-foreground">/agendar/</span>
+                  <Input
+                    id="bslug"
+                    value={form.slug}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        slug: e.target.value
+                          .toLowerCase()
+                          .normalize("NFD")
+                          .replace(/[̀-ͯ]/g, "")
+                          .replace(/[^a-z0-9-]/g, "-"),
+                      })
+                    }
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Segmento</Label>
+                <Select
+                  value={form.category}
+                  onValueChange={(category) => setForm({ ...form, category })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CATEGORIES.map((c) => (
+                      <SelectItem key={c.value} value={c.value}>
+                        {c.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="bphone">Telefone</Label>
+                  <Input
+                    id="bphone"
+                    value={form.phone}
+                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="baddress">Endereço</Label>
+                  <Input
+                    id="baddress"
+                    value={form.address}
+                    onChange={(e) => setForm({ ...form, address: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              onClick={() => save.mutate()}
+              disabled={
+                !form ||
+                form.name.trim().length < 2 ||
+                form.slug.trim().length < 3 ||
+                save.isPending
+              }
+            >
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
