@@ -12,29 +12,27 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
-import { Route as MasterLoginRouteImport } from './routes/master-login'
 import { Route as AuthenticatedMasterRouteImport } from './routes/_authenticated/master'
 import { Route as AuthenticatedPainelRouteImport } from './routes/_authenticated/painel'
 import { Route as AgendarSlugRouteImport } from './routes/agendar.$slug'
+import { Route as AuthenticatedEditorTemplateIdRouteImport } from './routes/_authenticated/editor-template.$id'
 import { Route as AuthenticatedPainelIndexRouteImport } from './routes/_authenticated/painel.index'
+import { Route as AuthenticatedPainelAparenciaEditorRouteImport } from './routes/_authenticated/painel.aparencia-editor'
 import { Route as AuthenticatedPainelAsPayRouteImport } from './routes/_authenticated/painel.as-pay'
-import { Route as AuthenticatedPainelAssinaturaRouteImport } from './routes/_authenticated/painel.assinatura'
 import { Route as AuthenticatedPainelBloqueiosRouteImport } from './routes/_authenticated/painel.bloqueios'
-import { Route as AuthenticatedPainelCaixaRouteImport } from './routes/_authenticated/painel.caixa'
 import { Route as AuthenticatedPainelClientesRouteImport } from './routes/_authenticated/painel.clientes'
 import { Route as AuthenticatedPainelConfiguracoesRouteImport } from './routes/_authenticated/painel.configuracoes'
 import { Route as AuthenticatedPainelFuncionamentoRouteImport } from './routes/_authenticated/painel.funcionamento'
 import { Route as AuthenticatedPainelIntegracoesRouteImport } from './routes/_authenticated/painel.integracoes'
 import { Route as AuthenticatedPainelLembretesRouteImport } from './routes/_authenticated/painel.lembretes'
+import { Route as AuthenticatedPainelMasterRouteImport } from './routes/_authenticated/painel.master'
 import { Route as AuthenticatedPainelNegociosRouteImport } from './routes/_authenticated/painel.negocios'
-import { Route as AuthenticatedPainelPagamentosRouteImport } from './routes/_authenticated/painel.pagamentos'
-import { Route as AuthenticatedPainelProdutosRouteImport } from './routes/_authenticated/painel.produtos'
 import { Route as AuthenticatedPainelProfissionaisRouteImport } from './routes/_authenticated/painel.profissionais'
 import { Route as AuthenticatedPainelRelatorioRouteImport } from './routes/_authenticated/painel.relatorio'
 import { Route as AuthenticatedPainelServicosRouteImport } from './routes/_authenticated/painel.servicos'
 import { Route as AuthenticatedPainelTemplatesRouteImport } from './routes/_authenticated/painel.templates'
-import { Route as AuthenticatedPainelWhatsappRouteImport } from './routes/_authenticated/painel.whatsapp'
-import { Route as ApiPublicMercadopagoWebhookRouteImport } from './routes/api/public/mercadopago-webhook'
+import { Route as ApiPublicAgpayWebhookRouteImport } from './routes/api/public/agpay-webhook'
+import { Route as ApiPublicHooksAgpayEventsRouteImport } from './routes/api/public/hooks/agpay-events'
 import { Route as ApiPublicHooksWhatsappRemindersRouteImport } from './routes/api/public/hooks/whatsapp-reminders'
 
 const IndexRoute = IndexRouteImport.update({
@@ -49,11 +47,6 @@ const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const MasterLoginRoute = MasterLoginRouteImport.update({
-  id: '/master-login',
-  path: '/master-login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedMasterRoute = AuthenticatedMasterRouteImport.update({
@@ -71,10 +64,22 @@ const AgendarSlugRoute = AgendarSlugRouteImport.update({
   path: '/agendar/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedEditorTemplateIdRoute =
+  AuthenticatedEditorTemplateIdRouteImport.update({
+    id: '/editor-template/$id',
+    path: '/editor-template/$id',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedPainelIndexRoute =
   AuthenticatedPainelIndexRouteImport.update({
     id: '/',
     path: '/',
+    getParentRoute: () => AuthenticatedPainelRoute,
+  } as any)
+const AuthenticatedPainelAparenciaEditorRoute =
+  AuthenticatedPainelAparenciaEditorRouteImport.update({
+    id: '/aparencia-editor',
+    path: '/aparencia-editor',
     getParentRoute: () => AuthenticatedPainelRoute,
   } as any)
 const AuthenticatedPainelAsPayRoute =
@@ -83,22 +88,10 @@ const AuthenticatedPainelAsPayRoute =
     path: '/as-pay',
     getParentRoute: () => AuthenticatedPainelRoute,
   } as any)
-const AuthenticatedPainelAssinaturaRoute =
-  AuthenticatedPainelAssinaturaRouteImport.update({
-    id: '/assinatura',
-    path: '/assinatura',
-    getParentRoute: () => AuthenticatedPainelRoute,
-  } as any)
 const AuthenticatedPainelBloqueiosRoute =
   AuthenticatedPainelBloqueiosRouteImport.update({
     id: '/bloqueios',
     path: '/bloqueios',
-    getParentRoute: () => AuthenticatedPainelRoute,
-  } as any)
-const AuthenticatedPainelCaixaRoute =
-  AuthenticatedPainelCaixaRouteImport.update({
-    id: '/caixa',
-    path: '/caixa',
     getParentRoute: () => AuthenticatedPainelRoute,
   } as any)
 const AuthenticatedPainelClientesRoute =
@@ -131,22 +124,16 @@ const AuthenticatedPainelLembretesRoute =
     path: '/lembretes',
     getParentRoute: () => AuthenticatedPainelRoute,
   } as any)
+const AuthenticatedPainelMasterRoute =
+  AuthenticatedPainelMasterRouteImport.update({
+    id: '/master',
+    path: '/master',
+    getParentRoute: () => AuthenticatedPainelRoute,
+  } as any)
 const AuthenticatedPainelNegociosRoute =
   AuthenticatedPainelNegociosRouteImport.update({
     id: '/negocios',
     path: '/negocios',
-    getParentRoute: () => AuthenticatedPainelRoute,
-  } as any)
-const AuthenticatedPainelPagamentosRoute =
-  AuthenticatedPainelPagamentosRouteImport.update({
-    id: '/pagamentos',
-    path: '/pagamentos',
-    getParentRoute: () => AuthenticatedPainelRoute,
-  } as any)
-const AuthenticatedPainelProdutosRoute =
-  AuthenticatedPainelProdutosRouteImport.update({
-    id: '/produtos',
-    path: '/produtos',
     getParentRoute: () => AuthenticatedPainelRoute,
   } as any)
 const AuthenticatedPainelProfissionaisRoute =
@@ -173,16 +160,15 @@ const AuthenticatedPainelTemplatesRoute =
     path: '/templates',
     getParentRoute: () => AuthenticatedPainelRoute,
   } as any)
-const AuthenticatedPainelWhatsappRoute =
-  AuthenticatedPainelWhatsappRouteImport.update({
-    id: '/whatsapp',
-    path: '/whatsapp',
-    getParentRoute: () => AuthenticatedPainelRoute,
-  } as any)
-const ApiPublicMercadopagoWebhookRoute =
-  ApiPublicMercadopagoWebhookRouteImport.update({
-    id: '/api/public/mercadopago-webhook',
-    path: '/api/public/mercadopago-webhook',
+const ApiPublicAgpayWebhookRoute = ApiPublicAgpayWebhookRouteImport.update({
+  id: '/api/public/agpay-webhook',
+  path: '/api/public/agpay-webhook',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicHooksAgpayEventsRoute =
+  ApiPublicHooksAgpayEventsRouteImport.update({
+    id: '/api/public/hooks/agpay-events',
+    path: '/api/public/hooks/agpay-events',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiPublicHooksWhatsappRemindersRoute =
@@ -195,56 +181,52 @@ const ApiPublicHooksWhatsappRemindersRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
-  '/master-login': typeof MasterLoginRoute
   '/master': typeof AuthenticatedMasterRoute
   '/painel': typeof AuthenticatedPainelRouteWithChildren
   '/agendar/$slug': typeof AgendarSlugRoute
+  '/editor-template/$id': typeof AuthenticatedEditorTemplateIdRoute
+  '/painel/aparencia-editor': typeof AuthenticatedPainelAparenciaEditorRoute
   '/painel/as-pay': typeof AuthenticatedPainelAsPayRoute
-  '/painel/assinatura': typeof AuthenticatedPainelAssinaturaRoute
   '/painel/bloqueios': typeof AuthenticatedPainelBloqueiosRoute
-  '/painel/caixa': typeof AuthenticatedPainelCaixaRoute
   '/painel/clientes': typeof AuthenticatedPainelClientesRoute
   '/painel/configuracoes': typeof AuthenticatedPainelConfiguracoesRoute
   '/painel/funcionamento': typeof AuthenticatedPainelFuncionamentoRoute
   '/painel/integracoes': typeof AuthenticatedPainelIntegracoesRoute
   '/painel/lembretes': typeof AuthenticatedPainelLembretesRoute
+  '/painel/master': typeof AuthenticatedPainelMasterRoute
   '/painel/negocios': typeof AuthenticatedPainelNegociosRoute
-  '/painel/pagamentos': typeof AuthenticatedPainelPagamentosRoute
-  '/painel/produtos': typeof AuthenticatedPainelProdutosRoute
   '/painel/profissionais': typeof AuthenticatedPainelProfissionaisRoute
   '/painel/relatorio': typeof AuthenticatedPainelRelatorioRoute
   '/painel/servicos': typeof AuthenticatedPainelServicosRoute
   '/painel/templates': typeof AuthenticatedPainelTemplatesRoute
-  '/painel/whatsapp': typeof AuthenticatedPainelWhatsappRoute
-  '/api/public/mercadopago-webhook': typeof ApiPublicMercadopagoWebhookRoute
+  '/api/public/agpay-webhook': typeof ApiPublicAgpayWebhookRoute
   '/painel/': typeof AuthenticatedPainelIndexRoute
+  '/api/public/hooks/agpay-events': typeof ApiPublicHooksAgpayEventsRoute
   '/api/public/hooks/whatsapp-reminders': typeof ApiPublicHooksWhatsappRemindersRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
-  '/master-login': typeof MasterLoginRoute
   '/master': typeof AuthenticatedMasterRoute
   '/agendar/$slug': typeof AgendarSlugRoute
+  '/editor-template/$id': typeof AuthenticatedEditorTemplateIdRoute
+  '/painel/aparencia-editor': typeof AuthenticatedPainelAparenciaEditorRoute
   '/painel/as-pay': typeof AuthenticatedPainelAsPayRoute
-  '/painel/assinatura': typeof AuthenticatedPainelAssinaturaRoute
   '/painel/bloqueios': typeof AuthenticatedPainelBloqueiosRoute
-  '/painel/caixa': typeof AuthenticatedPainelCaixaRoute
   '/painel/clientes': typeof AuthenticatedPainelClientesRoute
   '/painel/configuracoes': typeof AuthenticatedPainelConfiguracoesRoute
   '/painel/funcionamento': typeof AuthenticatedPainelFuncionamentoRoute
   '/painel/integracoes': typeof AuthenticatedPainelIntegracoesRoute
   '/painel/lembretes': typeof AuthenticatedPainelLembretesRoute
+  '/painel/master': typeof AuthenticatedPainelMasterRoute
   '/painel/negocios': typeof AuthenticatedPainelNegociosRoute
-  '/painel/pagamentos': typeof AuthenticatedPainelPagamentosRoute
-  '/painel/produtos': typeof AuthenticatedPainelProdutosRoute
   '/painel/profissionais': typeof AuthenticatedPainelProfissionaisRoute
   '/painel/relatorio': typeof AuthenticatedPainelRelatorioRoute
   '/painel/servicos': typeof AuthenticatedPainelServicosRoute
   '/painel/templates': typeof AuthenticatedPainelTemplatesRoute
-  '/painel/whatsapp': typeof AuthenticatedPainelWhatsappRoute
-  '/api/public/mercadopago-webhook': typeof ApiPublicMercadopagoWebhookRoute
+  '/api/public/agpay-webhook': typeof ApiPublicAgpayWebhookRoute
   '/painel': typeof AuthenticatedPainelIndexRoute
+  '/api/public/hooks/agpay-events': typeof ApiPublicHooksAgpayEventsRoute
   '/api/public/hooks/whatsapp-reminders': typeof ApiPublicHooksWhatsappRemindersRoute
 }
 export interface FileRoutesById {
@@ -252,29 +234,27 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
-  '/master-login': typeof MasterLoginRoute
   '/_authenticated/master': typeof AuthenticatedMasterRoute
   '/_authenticated/painel': typeof AuthenticatedPainelRouteWithChildren
   '/agendar/$slug': typeof AgendarSlugRoute
+  '/_authenticated/editor-template/$id': typeof AuthenticatedEditorTemplateIdRoute
+  '/_authenticated/painel/aparencia-editor': typeof AuthenticatedPainelAparenciaEditorRoute
   '/_authenticated/painel/as-pay': typeof AuthenticatedPainelAsPayRoute
-  '/_authenticated/painel/assinatura': typeof AuthenticatedPainelAssinaturaRoute
   '/_authenticated/painel/bloqueios': typeof AuthenticatedPainelBloqueiosRoute
-  '/_authenticated/painel/caixa': typeof AuthenticatedPainelCaixaRoute
   '/_authenticated/painel/clientes': typeof AuthenticatedPainelClientesRoute
   '/_authenticated/painel/configuracoes': typeof AuthenticatedPainelConfiguracoesRoute
   '/_authenticated/painel/funcionamento': typeof AuthenticatedPainelFuncionamentoRoute
   '/_authenticated/painel/integracoes': typeof AuthenticatedPainelIntegracoesRoute
   '/_authenticated/painel/lembretes': typeof AuthenticatedPainelLembretesRoute
+  '/_authenticated/painel/master': typeof AuthenticatedPainelMasterRoute
   '/_authenticated/painel/negocios': typeof AuthenticatedPainelNegociosRoute
-  '/_authenticated/painel/pagamentos': typeof AuthenticatedPainelPagamentosRoute
-  '/_authenticated/painel/produtos': typeof AuthenticatedPainelProdutosRoute
   '/_authenticated/painel/profissionais': typeof AuthenticatedPainelProfissionaisRoute
   '/_authenticated/painel/relatorio': typeof AuthenticatedPainelRelatorioRoute
   '/_authenticated/painel/servicos': typeof AuthenticatedPainelServicosRoute
   '/_authenticated/painel/templates': typeof AuthenticatedPainelTemplatesRoute
-  '/_authenticated/painel/whatsapp': typeof AuthenticatedPainelWhatsappRoute
-  '/api/public/mercadopago-webhook': typeof ApiPublicMercadopagoWebhookRoute
+  '/api/public/agpay-webhook': typeof ApiPublicAgpayWebhookRoute
   '/_authenticated/painel/': typeof AuthenticatedPainelIndexRoute
+  '/api/public/hooks/agpay-events': typeof ApiPublicHooksAgpayEventsRoute
   '/api/public/hooks/whatsapp-reminders': typeof ApiPublicHooksWhatsappRemindersRoute
 }
 export interface FileRouteTypes {
@@ -282,85 +262,79 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
-    | '/master-login'
     | '/master'
     | '/painel'
     | '/agendar/$slug'
+    | '/editor-template/$id'
+    | '/painel/aparencia-editor'
     | '/painel/as-pay'
-    | '/painel/assinatura'
     | '/painel/bloqueios'
-    | '/painel/caixa'
     | '/painel/clientes'
     | '/painel/configuracoes'
     | '/painel/funcionamento'
     | '/painel/integracoes'
     | '/painel/lembretes'
+    | '/painel/master'
     | '/painel/negocios'
-    | '/painel/pagamentos'
-    | '/painel/produtos'
     | '/painel/profissionais'
     | '/painel/relatorio'
     | '/painel/servicos'
     | '/painel/templates'
-    | '/painel/whatsapp'
-    | '/api/public/mercadopago-webhook'
+    | '/api/public/agpay-webhook'
     | '/painel/'
+    | '/api/public/hooks/agpay-events'
     | '/api/public/hooks/whatsapp-reminders'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/auth'
-    | '/master-login'
     | '/master'
     | '/agendar/$slug'
+    | '/editor-template/$id'
+    | '/painel/aparencia-editor'
     | '/painel/as-pay'
-    | '/painel/assinatura'
     | '/painel/bloqueios'
-    | '/painel/caixa'
     | '/painel/clientes'
     | '/painel/configuracoes'
     | '/painel/funcionamento'
     | '/painel/integracoes'
     | '/painel/lembretes'
+    | '/painel/master'
     | '/painel/negocios'
-    | '/painel/pagamentos'
-    | '/painel/produtos'
     | '/painel/profissionais'
     | '/painel/relatorio'
     | '/painel/servicos'
     | '/painel/templates'
-    | '/painel/whatsapp'
-    | '/api/public/mercadopago-webhook'
+    | '/api/public/agpay-webhook'
     | '/painel'
+    | '/api/public/hooks/agpay-events'
     | '/api/public/hooks/whatsapp-reminders'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
     | '/auth'
-    | '/master-login'
     | '/_authenticated/master'
     | '/_authenticated/painel'
     | '/agendar/$slug'
+    | '/_authenticated/editor-template/$id'
+    | '/_authenticated/painel/aparencia-editor'
     | '/_authenticated/painel/as-pay'
-    | '/_authenticated/painel/assinatura'
     | '/_authenticated/painel/bloqueios'
-    | '/_authenticated/painel/caixa'
     | '/_authenticated/painel/clientes'
     | '/_authenticated/painel/configuracoes'
     | '/_authenticated/painel/funcionamento'
     | '/_authenticated/painel/integracoes'
     | '/_authenticated/painel/lembretes'
+    | '/_authenticated/painel/master'
     | '/_authenticated/painel/negocios'
-    | '/_authenticated/painel/pagamentos'
-    | '/_authenticated/painel/produtos'
     | '/_authenticated/painel/profissionais'
     | '/_authenticated/painel/relatorio'
     | '/_authenticated/painel/servicos'
     | '/_authenticated/painel/templates'
-    | '/_authenticated/painel/whatsapp'
-    | '/api/public/mercadopago-webhook'
+    | '/api/public/agpay-webhook'
     | '/_authenticated/painel/'
+    | '/api/public/hooks/agpay-events'
     | '/api/public/hooks/whatsapp-reminders'
   fileRoutesById: FileRoutesById
 }
@@ -368,9 +342,9 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
-  MasterLoginRoute: typeof MasterLoginRoute
   AgendarSlugRoute: typeof AgendarSlugRoute
-  ApiPublicMercadopagoWebhookRoute: typeof ApiPublicMercadopagoWebhookRoute
+  ApiPublicAgpayWebhookRoute: typeof ApiPublicAgpayWebhookRoute
+  ApiPublicHooksAgpayEventsRoute: typeof ApiPublicHooksAgpayEventsRoute
   ApiPublicHooksWhatsappRemindersRoute: typeof ApiPublicHooksWhatsappRemindersRoute
 }
 
@@ -397,13 +371,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/master-login': {
-      id: '/master-login'
-      path: '/master-login'
-      fullPath: '/master-login'
-      preLoaderRoute: typeof MasterLoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/_authenticated/master': {
       id: '/_authenticated/master'
       path: '/master'
@@ -425,11 +392,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AgendarSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/editor-template/$id': {
+      id: '/_authenticated/editor-template/$id'
+      path: '/editor-template/$id'
+      fullPath: '/editor-template/$id'
+      preLoaderRoute: typeof AuthenticatedEditorTemplateIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/painel/': {
       id: '/_authenticated/painel/'
       path: '/'
       fullPath: '/painel/'
       preLoaderRoute: typeof AuthenticatedPainelIndexRouteImport
+      parentRoute: typeof AuthenticatedPainelRoute
+    }
+    '/_authenticated/painel/aparencia-editor': {
+      id: '/_authenticated/painel/aparencia-editor'
+      path: '/aparencia-editor'
+      fullPath: '/painel/aparencia-editor'
+      preLoaderRoute: typeof AuthenticatedPainelAparenciaEditorRouteImport
       parentRoute: typeof AuthenticatedPainelRoute
     }
     '/_authenticated/painel/as-pay': {
@@ -439,25 +420,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPainelAsPayRouteImport
       parentRoute: typeof AuthenticatedPainelRoute
     }
-    '/_authenticated/painel/assinatura': {
-      id: '/_authenticated/painel/assinatura'
-      path: '/assinatura'
-      fullPath: '/painel/assinatura'
-      preLoaderRoute: typeof AuthenticatedPainelAssinaturaRouteImport
-      parentRoute: typeof AuthenticatedPainelRoute
-    }
     '/_authenticated/painel/bloqueios': {
       id: '/_authenticated/painel/bloqueios'
       path: '/bloqueios'
       fullPath: '/painel/bloqueios'
       preLoaderRoute: typeof AuthenticatedPainelBloqueiosRouteImport
-      parentRoute: typeof AuthenticatedPainelRoute
-    }
-    '/_authenticated/painel/caixa': {
-      id: '/_authenticated/painel/caixa'
-      path: '/caixa'
-      fullPath: '/painel/caixa'
-      preLoaderRoute: typeof AuthenticatedPainelCaixaRouteImport
       parentRoute: typeof AuthenticatedPainelRoute
     }
     '/_authenticated/painel/clientes': {
@@ -495,25 +462,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPainelLembretesRouteImport
       parentRoute: typeof AuthenticatedPainelRoute
     }
+    '/_authenticated/painel/master': {
+      id: '/_authenticated/painel/master'
+      path: '/master'
+      fullPath: '/painel/master'
+      preLoaderRoute: typeof AuthenticatedPainelMasterRouteImport
+      parentRoute: typeof AuthenticatedPainelRoute
+    }
     '/_authenticated/painel/negocios': {
       id: '/_authenticated/painel/negocios'
       path: '/negocios'
       fullPath: '/painel/negocios'
       preLoaderRoute: typeof AuthenticatedPainelNegociosRouteImport
-      parentRoute: typeof AuthenticatedPainelRoute
-    }
-    '/_authenticated/painel/pagamentos': {
-      id: '/_authenticated/painel/pagamentos'
-      path: '/pagamentos'
-      fullPath: '/painel/pagamentos'
-      preLoaderRoute: typeof AuthenticatedPainelPagamentosRouteImport
-      parentRoute: typeof AuthenticatedPainelRoute
-    }
-    '/_authenticated/painel/produtos': {
-      id: '/_authenticated/painel/produtos'
-      path: '/produtos'
-      fullPath: '/painel/produtos'
-      preLoaderRoute: typeof AuthenticatedPainelProdutosRouteImport
       parentRoute: typeof AuthenticatedPainelRoute
     }
     '/_authenticated/painel/profissionais': {
@@ -544,18 +504,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPainelTemplatesRouteImport
       parentRoute: typeof AuthenticatedPainelRoute
     }
-    '/_authenticated/painel/whatsapp': {
-      id: '/_authenticated/painel/whatsapp'
-      path: '/whatsapp'
-      fullPath: '/painel/whatsapp'
-      preLoaderRoute: typeof AuthenticatedPainelWhatsappRouteImport
-      parentRoute: typeof AuthenticatedPainelRoute
+    '/api/public/agpay-webhook': {
+      id: '/api/public/agpay-webhook'
+      path: '/api/public/agpay-webhook'
+      fullPath: '/api/public/agpay-webhook'
+      preLoaderRoute: typeof ApiPublicAgpayWebhookRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/api/public/mercadopago-webhook': {
-      id: '/api/public/mercadopago-webhook'
-      path: '/api/public/mercadopago-webhook'
-      fullPath: '/api/public/mercadopago-webhook'
-      preLoaderRoute: typeof ApiPublicMercadopagoWebhookRouteImport
+    '/api/public/hooks/agpay-events': {
+      id: '/api/public/hooks/agpay-events'
+      path: '/api/public/hooks/agpay-events'
+      fullPath: '/api/public/hooks/agpay-events'
+      preLoaderRoute: typeof ApiPublicHooksAgpayEventsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/hooks/whatsapp-reminders': {
@@ -569,44 +529,39 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedPainelRouteChildren {
+  AuthenticatedPainelAparenciaEditorRoute: typeof AuthenticatedPainelAparenciaEditorRoute
   AuthenticatedPainelAsPayRoute: typeof AuthenticatedPainelAsPayRoute
-  AuthenticatedPainelAssinaturaRoute: typeof AuthenticatedPainelAssinaturaRoute
   AuthenticatedPainelBloqueiosRoute: typeof AuthenticatedPainelBloqueiosRoute
-  AuthenticatedPainelCaixaRoute: typeof AuthenticatedPainelCaixaRoute
   AuthenticatedPainelClientesRoute: typeof AuthenticatedPainelClientesRoute
   AuthenticatedPainelConfiguracoesRoute: typeof AuthenticatedPainelConfiguracoesRoute
   AuthenticatedPainelFuncionamentoRoute: typeof AuthenticatedPainelFuncionamentoRoute
   AuthenticatedPainelIntegracoesRoute: typeof AuthenticatedPainelIntegracoesRoute
   AuthenticatedPainelLembretesRoute: typeof AuthenticatedPainelLembretesRoute
+  AuthenticatedPainelMasterRoute: typeof AuthenticatedPainelMasterRoute
   AuthenticatedPainelNegociosRoute: typeof AuthenticatedPainelNegociosRoute
-  AuthenticatedPainelPagamentosRoute: typeof AuthenticatedPainelPagamentosRoute
-  AuthenticatedPainelProdutosRoute: typeof AuthenticatedPainelProdutosRoute
   AuthenticatedPainelProfissionaisRoute: typeof AuthenticatedPainelProfissionaisRoute
   AuthenticatedPainelRelatorioRoute: typeof AuthenticatedPainelRelatorioRoute
   AuthenticatedPainelServicosRoute: typeof AuthenticatedPainelServicosRoute
   AuthenticatedPainelTemplatesRoute: typeof AuthenticatedPainelTemplatesRoute
-  AuthenticatedPainelWhatsappRoute: typeof AuthenticatedPainelWhatsappRoute
   AuthenticatedPainelIndexRoute: typeof AuthenticatedPainelIndexRoute
 }
 
 const AuthenticatedPainelRouteChildren: AuthenticatedPainelRouteChildren = {
+  AuthenticatedPainelAparenciaEditorRoute:
+    AuthenticatedPainelAparenciaEditorRoute,
   AuthenticatedPainelAsPayRoute: AuthenticatedPainelAsPayRoute,
-  AuthenticatedPainelAssinaturaRoute: AuthenticatedPainelAssinaturaRoute,
   AuthenticatedPainelBloqueiosRoute: AuthenticatedPainelBloqueiosRoute,
-  AuthenticatedPainelCaixaRoute: AuthenticatedPainelCaixaRoute,
   AuthenticatedPainelClientesRoute: AuthenticatedPainelClientesRoute,
   AuthenticatedPainelConfiguracoesRoute: AuthenticatedPainelConfiguracoesRoute,
   AuthenticatedPainelFuncionamentoRoute: AuthenticatedPainelFuncionamentoRoute,
   AuthenticatedPainelIntegracoesRoute: AuthenticatedPainelIntegracoesRoute,
   AuthenticatedPainelLembretesRoute: AuthenticatedPainelLembretesRoute,
+  AuthenticatedPainelMasterRoute: AuthenticatedPainelMasterRoute,
   AuthenticatedPainelNegociosRoute: AuthenticatedPainelNegociosRoute,
-  AuthenticatedPainelPagamentosRoute: AuthenticatedPainelPagamentosRoute,
-  AuthenticatedPainelProdutosRoute: AuthenticatedPainelProdutosRoute,
   AuthenticatedPainelProfissionaisRoute: AuthenticatedPainelProfissionaisRoute,
   AuthenticatedPainelRelatorioRoute: AuthenticatedPainelRelatorioRoute,
   AuthenticatedPainelServicosRoute: AuthenticatedPainelServicosRoute,
   AuthenticatedPainelTemplatesRoute: AuthenticatedPainelTemplatesRoute,
-  AuthenticatedPainelWhatsappRoute: AuthenticatedPainelWhatsappRoute,
   AuthenticatedPainelIndexRoute: AuthenticatedPainelIndexRoute,
 }
 
@@ -616,11 +571,13 @@ const AuthenticatedPainelRouteWithChildren =
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedMasterRoute: typeof AuthenticatedMasterRoute
   AuthenticatedPainelRoute: typeof AuthenticatedPainelRouteWithChildren
+  AuthenticatedEditorTemplateIdRoute: typeof AuthenticatedEditorTemplateIdRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedMasterRoute: AuthenticatedMasterRoute,
   AuthenticatedPainelRoute: AuthenticatedPainelRouteWithChildren,
+  AuthenticatedEditorTemplateIdRoute: AuthenticatedEditorTemplateIdRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
@@ -630,9 +587,9 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
-  MasterLoginRoute: MasterLoginRoute,
   AgendarSlugRoute: AgendarSlugRoute,
-  ApiPublicMercadopagoWebhookRoute: ApiPublicMercadopagoWebhookRoute,
+  ApiPublicAgpayWebhookRoute: ApiPublicAgpayWebhookRoute,
+  ApiPublicHooksAgpayEventsRoute: ApiPublicHooksAgpayEventsRoute,
   ApiPublicHooksWhatsappRemindersRoute: ApiPublicHooksWhatsappRemindersRoute,
 }
 export const routeTree = rootRouteImport

@@ -1,21 +1,46 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { toast } from "@/lib/toast";
-import { Eye, EyeOff, Headphones, LockKeyhole, Phone, UsersRound } from "lucide-react";
+import { toast } from "sonner";
+import { Eye, EyeOff, UserRound } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
+import { AuthProvider, useAuth } from "@/hooks/useAuth";
+import {
+  loginInputMode,
+  onlyDigits,
+  postLoginDestination,
+  resolveLoginCredentials,
+  type LoginCredentials,
+  type PostLoginDestination,
+} from "@/lib/auth/login-flow";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { friendlyError } from "@/lib/error-page";
+import { APP_HOSTS, appSurfaceForHostname, isLocalAppHost } from "@/lib/app-hosts";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
-      { title: "Agenda Agora — Acesso ao painel" },
-      { name: "description", content: "Acesse o painel do seu estabelecimento." },
+      { title: "Entrar no Agenda Agora — painel de agendamentos" },
+      {
+        name: "description",
+        content: "Acesse o painel do seu negócio para gerenciar agenda, serviços e clientes.",
+      },
+      { property: "og:title", content: "Entrar no Agenda Agora" },
+      { property: "og:description", content: "Acesse o painel de agendamentos do seu negócio." },
     ],
   }),
-  component: AuthPage,
+  component: AuthRoute,
 });
 
-const onlyDigits = (value: string) => value.replace(/\D/g, "");
+function AuthRoute() {
+  return (
+    <AuthProvider>
+      <AuthPage />
+    </AuthProvider>
+  );
+}
+
 const formatPhone = (value: string) => {
   const d = onlyDigits(value).slice(0, 11);
   if (d.length <= 2) return d;
@@ -23,158 +48,216 @@ const formatPhone = (value: string) => {
   if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
   return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
 };
-const phoneLogin = (phone: string) => `${onlyDigits(phone)}@agenda.local`;
-const phonePassword = (senha: string) => `agendaagora:${senha}`;
-const phoneE164 = (phone: string) => {
-  const digits = onlyDigits(phone);
-  return digits.startsWith("55") ? `+${digits}` : `+55${digits}`;
-};
-
-async function getRole(userId: string) {
-  const { data } = await supabase.from("user_roles").select("role").eq("user_id", userId).maybeSingle();
-  return data?.role ?? null;
+async function getRoles(userId: string) {
+  const { data, error } = await supabase.from("user_roles").select("role").eq("user_id", userId);
+  if (error) throw new Error("Não foi possível confirmar o acesso desta conta.");
+  return (data ?? []).map((row) => row.role);
 }
 
-async function signInOwner(phone: string, password: string) {
-  const digits = onlyDigits(phone);
-  const attempts = [
-    () =>
-      supabase.auth.signInWithPassword({
-        email: phoneLogin(digits),
-        password: phonePassword(password),
-      }),
-    () =>
-      supabase.auth.signInWithPassword({
-        email: phoneLogin(digits),
-        password,
-      }),
-    () =>
-      supabase.auth.signInWithPassword({
-        phone: phoneE164(digits),
-        password,
-      }),
-  ];
-
-  for (const attempt of attempts) {
-    const { data, error } = await attempt();
-    if (!error && data.user) return data.user;
-  }
-
-  throw new Error("Telefone ou senha incorretos.");
+/** Role confirmada em `user_roles`, nunca por metadata do usuário. */
+async function destinationFor(userId: string) {
+  const roles = await getRoles(userId);
+  return postLoginDestination({ roles });
 }
 
 function AuthPage() {
   const navigate = useNavigate();
   const { user, loading } = useAuth();
-  const [phone, setPhone] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
+  const surface = useSyncExternalStore(
+    () => () => {},
+    () => appSurfaceForHostname(window.location.hostname),
+    () => null,
+  );
+
+  const passwordMode = loginInputMode(identifier);
+  const emailMode = passwordMode.email;
+
+  const goTo = (destination: PostLoginDestination) =>
+    void navigate({ to: destination as "/painel" });
+
+  const destinationAllowedHere = (destination: PostLoginDestination) => {
+    // No localhost os três hosts de produção compartilham a mesma origem. Permitir
+    // ambos os destinos aqui torna o Master verificável sem relaxar a separação real.
+    if (isLocalAppHost(window.location.hostname)) return true;
+    if (surface === "public") return false;
+    return surface !== "admin"
+      ? destination !== "/painel/master"
+      : destination === "/painel/master";
+  };
 
   useEffect(() => {
     if (loading || !user) return;
     void (async () => {
-      const role = await getRole(user.id);
-      if (role === "owner") void navigate({ to: "/painel" });
-      else if (role === "super_admin") {
-        await supabase.auth.signOut();
-        toast.info("Use o acesso exclusivo do Master.");
-      }
+      const destination = await destinationFor(user.id).catch(() => null);
+      if (!destination) return;
+      if (destinationAllowedHere(destination)) goTo(destination);
+      else void supabase.auth.signOut();
     })();
-  }, [loading, user, navigate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, surface, user]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    const digits = onlyDigits(phone);
-    if (digits.length < 10) {
-      toast.error("Informe o telefone com DDD.");
-      return;
-    }
-    if (!/^\d{4}$/.test(password)) {
-      toast.error("A senha deve ter exatamente 4 dígitos.");
+    let credentials: LoginCredentials;
+    try {
+      credentials = resolveLoginCredentials(identifier, password);
+    } catch (error) {
+      toast.error(friendlyError(error, "validar os dados de acesso"));
       return;
     }
     setBusy(true);
     try {
-      const signedUser = await signInOwner(phone, password);
-      const role = await getRole(signedUser.id);
-      if (role !== "owner") {
+      let { data, error } = await supabase.auth.signInWithPassword({
+        email: credentials.email,
+        password: credentials.password,
+      });
+      // Contas de equipe (profissionais com e-mail próprio) usam o mesmo padrão de senha
+      // de 4 dígitos dos donos (prefixo "agendaagora:"), mas entram pelo campo de e-mail.
+      // Se a tentativa direta falhar e a senha digitada for um PIN de 4 dígitos, tenta de
+      // novo com o prefixo antes de desistir.
+      if ((error || !data.user) && credentials.kind === "admin" && /^\d{4}$/.test(password)) {
+        ({ data, error } = await supabase.auth.signInWithPassword({
+          email: credentials.email,
+          password: `agendaagora:${password}`,
+        }));
+      }
+      if (error || !data.user) {
+        throw new Error(
+          credentials.kind === "admin"
+            ? "E-mail ou senha incorretos."
+            : "Telefone ou senha incorretos.",
+        );
+      }
+      const destination = await destinationFor(data.user.id);
+      if (!destination) {
         await supabase.auth.signOut();
-        if (role === "super_admin") throw new Error("Esta é a conta Master. Use o acesso exclusivo do Master.");
-        throw new Error("Login reconhecido, mas esta conta ainda não possui a função owner no Supabase.");
+        throw new Error("Esta conta não possui acesso ao painel.");
+      }
+      if (!destinationAllowedHere(destination)) {
+        await supabase.auth.signOut();
+        throw new Error(
+          destination === "/painel/master"
+            ? `O administrador entra em admin.agendagora.company.`
+            : `Este acesso pertence ao painel do estabelecimento em painel.agendagora.company.`,
+        );
       }
       toast.success("Bem-vindo de volta!");
-      void navigate({ to: "/painel" });
+      goTo(destination);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Não foi possível entrar.");
+      toast.error(friendlyError(error, "entrar"));
     } finally {
       setBusy(false);
     }
   };
 
+  if (surface === "public") return <AccessChooser />;
+
   return (
-    <main className="relative flex min-h-[100svh] items-center justify-center overflow-hidden bg-[#050607] px-4 py-8 text-[#f3f4f6] sm:px-6">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_0%_20%,rgba(15,48,86,0.55),transparent_42%),radial-gradient(circle_at_100%_100%,rgba(0,70,150,0.2),transparent_38%)]" />
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(115deg,rgba(11,29,49,0.3),transparent_32%,transparent_70%,rgba(4,15,28,0.24))]" />
-      <div className="pointer-events-none absolute -left-32 top-1/4 size-80 rounded-full bg-blue-600/[0.08] blur-3xl animate-pulse" />
-      <div className="pointer-events-none absolute -right-32 bottom-0 size-96 rounded-full bg-cyan-400/[0.06] blur-3xl animate-pulse [animation-delay:1.5s]" />
-
-      <section className="relative z-10 w-full max-w-[430px]">
-        <div className="mb-7 text-center sm:mb-8">
-          <div className="mb-3 flex items-center justify-center">
-            <div className="relative inline-flex items-center text-[31px] font-bold leading-none tracking-[-0.065em] drop-shadow-[0_0_14px_rgba(255,255,255,0.05)] transition-transform duration-500 hover:scale-[1.015]">
-              <span className="text-[#f3f4f6]">Agenda</span>
-              <span className="ml-[3px] text-[#1da1ff] drop-shadow-[0_0_12px_rgba(29,161,255,0.16)] animate-pulse [animation-duration:3.4s]">Agora</span>
-            </div>
-          </div>
-          <p className="text-[14px] text-[#7f8793]">Seu negócio organizado. Seus horários sob controle.</p>
-        </div>
-
-        <div className="rounded-2xl border border-[#25282c] bg-transparent p-6 shadow-[0_18px_55px_rgba(0,0,0,0.35)] backdrop-blur-[2px] sm:p-8">
-          <div className="mb-7 text-center">
-            <h1 className="text-[27px] font-semibold tracking-[-0.035em] text-[#f3f4f6]">Acesse sua conta</h1>
-            <p className="mt-2 text-[14px] leading-5 text-[#737983]">Insira suas credenciais de acesso abaixo.</p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label htmlFor="phone" className="mb-2 block text-[13px] font-medium text-[#777d87]">Telefone</label>
-              <div className="group relative">
-                <Phone className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-[#555b65] transition-colors group-focus-within:text-[#1677ff]" />
-                <input id="phone" type="tel" inputMode="numeric" autoComplete="username" value={phone} onChange={(event) => setPhone(formatPhone(event.target.value))} placeholder="(11) 99999-9999" maxLength={15} required className="h-12 w-full rounded-xl border border-[#292c31] bg-transparent pl-11 pr-4 text-[15px] text-[#e5e7eb] outline-none transition focus:border-[#1677ff] focus:ring-4 focus:ring-blue-500/10 placeholder:text-[#555b65]" />
+    <div className="flex min-h-screen items-center justify-center hero-wash px-6 py-12">
+      <div className="w-full max-w-md">
+        <img
+          src="/agenda-agora-logo.svg"
+          alt="Agenda Agora"
+          decoding="async"
+          className="mx-auto mb-6 block h-auto w-full max-w-[10rem]"
+        />
+        <div className="surface p-7">
+          <h1 className="text-2xl font-bold">
+            {surface === "admin" ? "Entrar na administração" : "Entrar no painel"}
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {surface === "admin"
+              ? "Acesso exclusivo para administradores da plataforma."
+              : "Estabelecimentos entram com telefone e senha de 4 dígitos; profissionais, com seu e-mail."}
+          </p>
+          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="identifier">Telefone ou e-mail</Label>
+              <div className="relative">
+                <Input
+                  id="identifier"
+                  type="text"
+                  autoComplete="username"
+                  inputMode={emailMode ? "email" : "text"}
+                  value={identifier}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    // Só formata como telefone enquanto não houver letras ou "@".
+                    setIdentifier(/[a-z@]/i.test(value) ? value : formatPhone(value));
+                  }}
+                  placeholder="(11) 93935-4416"
+                  required
+                  className="pr-10"
+                />
+                <UserRound className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               </div>
             </div>
-
-            <div>
-              <div className="mb-2 flex items-center justify-between">
-                <label htmlFor="password" className="text-[13px] font-medium text-[#777d87]">Senha</label>
-                <button type="button" onClick={() => toast.info("Entre em contato com o suporte para recuperar seu acesso.")} className="text-[12px] font-medium text-[#7c8088] transition hover:text-[#1677ff] hover:underline">Esqueci minha senha</button>
-              </div>
-              <div className="group relative">
-                <LockKeyhole className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-[#555b65] transition-colors group-focus-within:text-[#1677ff]" />
-                <input id="password" type={showPassword ? "text" : "password"} inputMode="numeric" autoComplete="current-password" value={password} onChange={(event) => setPassword(onlyDigits(event.target.value).slice(0, 4))} placeholder="••••" minLength={4} maxLength={4} required className="h-12 w-full rounded-xl border border-[#292c31] bg-transparent pl-11 pr-12 text-[16px] tracking-[0.22em] text-[#e5e7eb] outline-none transition focus:border-[#1677ff] focus:ring-4 focus:ring-blue-500/10 placeholder:text-[#555b65]" />
-                <button type="button" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#555b65] transition hover:text-[#9ca3af]">{showPassword ? <EyeOff className="size-[18px]" /> : <Eye className="size-[18px]" />}</button>
+            <div className="space-y-2">
+              <Label htmlFor="password">{passwordMode.label}</Label>
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  inputMode={emailMode ? "text" : "numeric"}
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) =>
+                    setPassword(emailMode ? e.target.value : onlyDigits(e.target.value).slice(0, 4))
+                  }
+                  placeholder={emailMode ? "Sua senha" : "1234"}
+                  maxLength={passwordMode.maxLength}
+                  pattern={passwordMode.pattern}
+                  required
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                >
+                  {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </button>
               </div>
             </div>
-
-            <button type="submit" disabled={busy} className="h-12 w-full rounded-full bg-[#f5f5f5] text-[15px] font-semibold text-[#111111] shadow-[0_5px_20px_rgba(255,255,255,0.08)] transition hover:-translate-y-px hover:bg-white hover:shadow-[0_8px_28px_rgba(255,255,255,0.12)] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60">{busy ? "Entrando..." : "Entrar"}</button>
+            <Button type="submit" className="w-full" disabled={busy}>
+              {busy ? "Aguarde..." : "Entrar"}
+            </Button>
           </form>
-
-          <div className="my-6 flex items-center gap-3"><div className="h-px flex-1 bg-[#24272b]" /><span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[#666b73]">Acesso seguro</span><div className="h-px flex-1 bg-[#24272b]" /></div>
-          <p className="text-center text-[12px] leading-5 text-[#626871]">Ao entrar, você acessa o painel de gerenciamento do seu estabelecimento.</p>
         </div>
+      </div>
+    </div>
+  );
+}
 
-        <div className="mt-5 grid grid-cols-2">
-          <div className="flex min-h-[58px] items-center gap-2.5 px-3.5 py-3 sm:px-5">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-blue-500/20 bg-blue-500/[0.06] text-[#1677ff]"><UsersRound className="size-[15px]" /></div>
-            <div className="min-w-0"><p className="text-[13px] font-semibold leading-4 text-[#e5e7eb]">+10.000</p><p className="mt-0.5 text-[9px] font-medium uppercase tracking-[0.04em] text-[#626a75]">Usuários ativos</p></div>
+function AccessChooser() {
+  return (
+    <div className="flex min-h-screen items-center justify-center hero-wash px-6 py-12">
+      <div className="w-full max-w-md">
+        <img
+          src="/agenda-agora-logo.svg"
+          alt="Agenda Agora"
+          className="mx-auto mb-6 block h-auto w-full max-w-[10rem]"
+        />
+        <div className="surface space-y-4 p-7">
+          <div>
+            <h1 className="text-2xl font-bold">Escolha seu acesso</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Os painéis do estabelecimento e da plataforma são separados.
+            </p>
           </div>
-          <div className="flex min-h-[58px] items-center gap-2.5 px-3.5 py-3 sm:px-5">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-blue-500/20 bg-blue-500/[0.06] text-[#1677ff]"><Headphones className="size-[15px]" /></div>
-            <div className="min-w-0"><p className="text-[13px] font-semibold leading-4 text-[#e5e7eb]">Suporte</p><p className="mt-0.5 text-[9px] font-medium uppercase tracking-[0.04em] text-[#626a75]">Ativo 24 hrs</p></div>
-          </div>
+          <Button asChild className="w-full">
+            <a href={`https://${APP_HOSTS.panel}/auth`}>Painel do estabelecimento</a>
+          </Button>
+          <Button asChild variant="secondary" className="w-full">
+            <a href={`https://${APP_HOSTS.admin}/auth`}>Administração da plataforma</a>
+          </Button>
         </div>
-      </section>
-    </main>
+      </div>
+    </div>
   );
 }

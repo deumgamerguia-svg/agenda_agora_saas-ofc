@@ -1,13 +1,6 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Session, User } from "@supabase/supabase-js";
+import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
 type AuthState = {
@@ -24,50 +17,43 @@ const AuthContext = createContext<AuthState>({
   signOut: async () => {},
 });
 
-function syncServerSessionCookie(accessToken: string | null) {
-  if (typeof document === "undefined") return;
-  const secure = window.location.protocol === "https:" ? "; Secure" : "";
-  if (!accessToken) {
-    document.cookie = `agenda_supabase_session=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
-    return;
-  }
-  document.cookie = `agenda_supabase_session=${encodeURIComponent(accessToken)}; Path=/; SameSite=Lax${secure}`;
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  // Dados em cache (permissões, negócios, status master) não têm o user id na
+  // queryKey; sem isso, trocar de conta no mesmo navegador mostrava dados da
+  // conta anterior até um F5 — inclusive acesso Master indevido.
+  const lastUserId = useRef<string | null | undefined>(undefined);
 
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      syncServerSessionCookie(nextSession?.access_token ?? null);
+      const nextUserId = nextSession?.user.id ?? null;
+      if (lastUserId.current !== undefined && lastUserId.current !== nextUserId) {
+        queryClient.clear();
+      }
+      lastUserId.current = nextUserId;
       setSession(nextSession);
       setLoading(false);
     });
 
     supabase.auth.getSession().then(({ data }) => {
-      syncServerSessionCookie(data.session?.access_token ?? null);
+      lastUserId.current = data.session?.user.id ?? null;
       setSession(data.session);
       setLoading(false);
     });
 
     return () => sub.subscription.unsubscribe();
-  }, []);
+  }, [queryClient]);
 
-  const signOut = useCallback(async () => {
-    syncServerSessionCookie(null);
-    await supabase.auth.signOut();
-  }, []);
-
-  const value = useMemo<AuthState>(
-    () => ({
-      session,
-      user: session?.user ?? null,
-      loading,
-      signOut,
-    }),
-    [session, loading, signOut],
-  );
+  const value: AuthState = {
+    session,
+    user: session?.user ?? null,
+    loading,
+    signOut: async () => {
+      await supabase.auth.signOut();
+    },
+  };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

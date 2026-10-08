@@ -1,122 +1,74 @@
-// @lovable.dev/vite-tanstack-config already includes the following — do NOT add them manually
-// or the app will break with duplicate plugins:
-//   - TanStack devtools (dev-only, first), tanstackStart, viteReact, tailwindcss, tsConfigPaths,
-//     nitro (build-only using cloudflare as a default target), VITE_* env injection, @ path alias,
-//     React/TanStack dedupe, error logger plugins, and sandbox detection (port/host/strictPort).
-// You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
-import { fileURLToPath } from "node:url";
-import { gzipSync } from "node:zlib";
-import { defineConfig } from "@lovable.dev/vite-tanstack-config";
+import tailwindcss from "@tailwindcss/vite";
+import { tanstackStart } from "@tanstack/react-start/plugin/vite";
+import viteReact from "@vitejs/plugin-react";
+import { nitro } from "nitro/vite";
+import { defineConfig, loadEnv } from "vite";
 
-const auditBundle = process.env['BUNDLE_AUDIT'] === "1";
+export default defineConfig(({ mode }) => {
+  const fileEnv = loadEnv(mode, process.cwd(), "");
+  const supabaseUrl =
+    process.env["VITE_SUPABASE_URL"] ??
+    process.env["SUPABASE_URL"] ??
+    fileEnv["VITE_SUPABASE_URL"] ??
+    fileEnv["SUPABASE_URL"] ??
+    "";
+  const supabasePublishableKey =
+    process.env["VITE_SUPABASE_PUBLISHABLE_KEY"] ??
+    process.env["SUPABASE_PUBLISHABLE_KEY"] ??
+    fileEnv["VITE_SUPABASE_PUBLISHABLE_KEY"] ??
+    fileEnv["SUPABASE_PUBLISHABLE_KEY"] ??
+    "";
 
-const bundleAuditPlugin = {
-  name: "agenda-bundle-audit",
-  generateBundle(_options: unknown, bundle: Record<string, any>) {
-    if (!auditBundle) return;
-
-    const emittedChunks = Object.values(bundle).filter((entry: any) => entry?.type === "chunk") as any[];
-    const emittedAssets = Object.values(bundle).filter((entry: any) => entry?.type === "asset") as any[];
-
-    const chunks = emittedChunks
-      .map((entry: any) => ({
-        fileName: entry.fileName,
-        bytes: Buffer.byteLength(entry.code ?? "", "utf8"),
-        gzipBytes: gzipSync(entry.code ?? "").byteLength,
-        modules: Object.entries(entry.modules ?? {})
-          .map(([id, info]: [string, any]) => ({
-            id,
-            renderedLength: Number(info?.renderedLength ?? 0),
-          }))
-          .sort((a, b) => b.renderedLength - a.renderedLength)
-          .slice(0, 15),
-      }))
-      .sort((a, b) => b.bytes - a.bytes)
-      .slice(0, 12);
-
-    console.log("\n[BUNDLE_AUDIT] Largest chunks and module contributors");
-    for (const chunk of chunks) {
-      console.log(
-        `[BUNDLE_AUDIT] ${chunk.fileName} ${(chunk.bytes / 1024).toFixed(1)} KiB gzip ${(chunk.gzipBytes / 1024).toFixed(1)} KiB`,
-      );
-      for (const mod of chunk.modules) {
-        console.log(
-          `  ${(mod.renderedLength / 1024).toFixed(1)} KiB  ${mod.id.replace(process.cwd(), ".")}`,
-        );
-      }
-    }
-
-    const byFile = new Map(emittedChunks.map((chunk: any) => [chunk.fileName, chunk]));
-    const closureFor = (root: any) => {
-      const visited = new Set<string>();
-      const visit = (fileName: string) => {
-        if (visited.has(fileName)) return;
-        visited.add(fileName);
-        const chunk: any = byFile.get(fileName);
-        for (const dep of chunk?.imports ?? []) visit(dep);
-      };
-      visit(root.fileName);
-      const selected = [...visited].map((name) => byFile.get(name)).filter(Boolean);
-      return {
-        files: selected.length,
-        bytes: selected.reduce((sum: number, chunk: any) => sum + Buffer.byteLength(chunk.code ?? "", "utf8"), 0),
-        gzipBytes: selected.reduce((sum: number, chunk: any) => sum + gzipSync(chunk.code ?? "").byteLength, 0),
-      };
-    };
-
-    const reportClosure = (label: string, predicate: (chunk: any) => boolean) => {
-      const root = emittedChunks.find(predicate);
-      if (!root) return;
-      const result = closureFor(root);
-      console.log(
-        `[BUNDLE_AUDIT_SUMMARY] ${label}: ${result.files} JS files, ${(result.bytes / 1024).toFixed(1)} KiB raw, ${(result.gzipBytes / 1024).toFixed(1)} KiB gzip`,
-      );
-    };
-
-    reportClosure("client-entry", (chunk: any) => chunk.isEntry);
-    const hasModule = (chunk: any, suffix: string) =>
-      String(chunk.facadeModuleId ?? "").endsWith(suffix) ||
-      Object.keys(chunk.modules ?? {}).some((id) => id.endsWith(suffix));
-
-    reportClosure("route-auth", (chunk: any) => hasModule(chunk, "/src/routes/auth.tsx"));
-    reportClosure("route-panel", (chunk: any) => hasModule(chunk, "/src/routes/_authenticated/painel.index.tsx"));
-    reportClosure("route-public-booking", (chunk: any) => hasModule(chunk, "/src/routes/agendar.$slug.tsx"));
-
-    const cssAssets = emittedAssets.filter((asset: any) => String(asset.fileName).endsWith(".css"));
-    const cssRaw = cssAssets.reduce((sum: number, asset: any) => {
-      const source = typeof asset.source === "string" ? asset.source : Buffer.from(asset.source ?? []);
-      return sum + Buffer.byteLength(source);
-    }, 0);
-    const cssGzip = cssAssets.reduce((sum: number, asset: any) => {
-      const source = typeof asset.source === "string" ? asset.source : Buffer.from(asset.source ?? []);
-      return sum + gzipSync(source).byteLength;
-    }, 0);
-    console.log(
-      `[BUNDLE_AUDIT_SUMMARY] emitted-css: ${cssAssets.length} files, ${(cssRaw / 1024).toFixed(1)} KiB raw, ${(cssGzip / 1024).toFixed(1)} KiB gzip`,
-    );
-  },
-};
-
-export default defineConfig({
-  vite: {
-    plugins: auditBundle ? [bundleAuditPlugin] : [],
-    build: {
-      manifest: auditBundle,
+  return {
+    resolve: { tsconfigPaths: true },
+    define: {
+      "import.meta.env.VITE_SUPABASE_URL": JSON.stringify(supabaseUrl),
+      "import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY": JSON.stringify(supabasePublishableKey),
     },
-    resolve: {
-      alias: {
-        // Compatibilidade temporária com imports existentes. O arquivo antigo
-        // terminava em .client.ts e era bloqueado no build SSR; a resolução
-        // nativa do Vite acontece antes da proteção do TanStack.
-        "@/lib/panel1-config.client": fileURLToPath(
-          new URL("./src/lib/panel1-config.storage.ts", import.meta.url),
-        ),
+    build: {
+      rolldownOptions: {
+        output: {
+          codeSplitting: {
+            groups: [
+              {
+                name: "supabase",
+                test: /node_modules[\\/]@supabase[\\/]/,
+                includeDependenciesRecursively: false,
+                priority: 20,
+              },
+              {
+                name: "react-query",
+                test: /node_modules[\\/]@tanstack[\\/]react-query[\\/]/,
+                includeDependenciesRecursively: false,
+                priority: 15,
+              },
+              {
+                name: "radix",
+                test: /node_modules[\\/]@radix-ui[\\/]/,
+                // Os primitivos Radix dependem uns dos outros. Separar somente
+                // os pacotes @radix-ui criou um ciclo entre os chunks `radix`
+                // e `select` em produção, deixando SelectPrimitive.Trigger
+                // indefinido durante a hidratação. Mantê-los com as
+                // dependências compartilhadas elimina esse ciclo.
+                includeDependenciesRecursively: true,
+                priority: 15,
+              },
+              {
+                // Precisa incluir as dependências (d3-scale, d3-shape etc.) no
+                // mesmo chunk: separá-las causa corrida no carregamento dos
+                // módulos em produção ("TypeError: X is not a function"),
+                // porque o código de topo da recharts roda antes das
+                // dependências terminarem de carregar num chunk à parte.
+                name: "recharts",
+                test: /node_modules[\\/]recharts[\\/]/,
+                includeDependenciesRecursively: true,
+                priority: 15,
+              },
+            ],
+          },
+        },
       },
     },
-  },
-  tanstackStart: {
-    // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
-    // nitro/vite builds from this
-    server: { entry: "server" },
-  },
+    plugins: [tanstackStart({ server: { entry: "server" } }), nitro(), viteReact(), tailwindcss()],
+  };
 });

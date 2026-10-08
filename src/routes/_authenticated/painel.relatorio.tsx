@@ -1,12 +1,13 @@
-import { lazy, Suspense, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { RuntimeProfiler } from "@/lib/runtime-profiler";
 import { useBusiness } from "@/lib/business";
 import { formatPrice } from "@/lib/format";
+import { completedReportMetrics } from "@/lib/report-metrics";
 import { PageHeader, NoBusiness } from "@/components/painel/PageHeader";
 import { Button } from "@/components/ui/button";
+import { ReportChart } from "@/components/painel/ReportChart";
 import {
   CalendarCheck2,
   ChartNoAxesColumnIncreasing,
@@ -18,9 +19,12 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-const ReportChart = lazy(() =>
-  import("@/components/painel/ReportChart").then((module) => ({ default: module.ReportChart })),
-);
+// Antes usava React.lazy() aqui pra manter a recharts fora do bundle das rotas
+// de agendamento/agenda, mas isso duplicava o code-splitting que o TanStack
+// Start já faz por rota (esta tela já é seu próprio chunk) e causava um bug
+// de produção: "TypeError: le is not a function" no chunk minificado da
+// recharts, por causa de uma corrida no carregamento dos chunks aninhados.
+// Import direto resolve sem perder o isolamento do bundle.
 
 export const Route = createFileRoute("/_authenticated/painel/relatorio")({
   head: () => ({
@@ -31,7 +35,7 @@ export const Route = createFileRoute("/_authenticated/painel/relatorio")({
       { property: "og:description", content: "Desempenho e faturamento do negócio." },
     ],
   }),
-  component: ProfiledRelatorioPage,
+  component: RelatorioPage,
 });
 
 const RANGES = [
@@ -39,19 +43,6 @@ const RANGES = [
   { days: 30, label: "30 dias" },
   { days: 90, label: "90 dias" },
 ];
-
-const REPORT_DAY_FORMATTER = new Intl.DateTimeFormat("pt-BR", {
-  day: "2-digit",
-  month: "2-digit",
-});
-
-function ProfiledRelatorioPage() {
-  return (
-    <RuntimeProfiler id="RelatorioPage">
-      <RelatorioPage />
-    </RuntimeProfiler>
-  );
-}
 
 function RelatorioPage() {
   const { businessId } = useBusiness();
@@ -85,94 +76,41 @@ function RelatorioPage() {
   });
 
   const report = useMemo(() => {
-    const services = data?.services ?? [];
-    const professionals = data?.professionals ?? [];
-    const appointments = data?.appointments ?? [];
+    const appts = (data?.appointments ?? []).filter((a) => a.status !== "bloqueado");
+    const metrics = completedReportMetrics(appts, data?.services ?? [], data?.professionals ?? []);
+    const done = appts.filter((a) => a.status === "concluido");
+    const canceled = appts.filter((a) => a.status === "cancelado");
+    const revenue = metrics.revenue;
+    // Sinal pago é dinheiro que já entrou, independente do atendimento já ter sido
+    // marcado como concluído — por isso não filtra por `done` como o faturamento.
+    const deposits = appts
+      .filter((a) => a.deposit_paid_at)
+      .reduce((sum, a) => sum + (a.deposit_cents ?? 0), 0);
+    const { byService, byProfessional } = metrics;
 
-    const serviceById = new Map(
-      services.map((service) => [service.id, service] as const),
-    );
-    const serviceTotals = new Map<string, number>();
-    const professionalTotals = new Map<string, number>();
     const perDay = new Map<string, number>();
-    const clients = new Set<string>();
-
-    let total = 0;
-    let done = 0;
-    let canceled = 0;
-    let revenue = 0;
-    let deposits = 0;
-
-    for (const appointment of appointments) {
-      if (appointment.status === "bloqueado") continue;
-
-      total += 1;
-      const completed =
-        appointment.status === "concluido" || appointment.status === "confirmado";
-
-      if (completed) {
-        done += 1;
-        if (appointment.service_id) {
-          revenue += serviceById.get(appointment.service_id)?.price_cents ?? 0;
-        }
-      }
-      if (appointment.status === "cancelado") canceled += 1;
-      if (appointment.deposit_paid_at) deposits += appointment.deposit_cents ?? 0;
-
-      if (appointment.service_id) {
-        serviceTotals.set(
-          appointment.service_id,
-          (serviceTotals.get(appointment.service_id) ?? 0) + 1,
-        );
-      }
-      if (appointment.professional_id) {
-        professionalTotals.set(
-          appointment.professional_id,
-          (professionalTotals.get(appointment.professional_id) ?? 0) + 1,
-        );
-      }
-
-      const dayKey = REPORT_DAY_FORMATTER.format(new Date(appointment.starts_at));
-      perDay.set(dayKey, (perDay.get(dayKey) ?? 0) + 1);
-      clients.add(appointment.customer_name.trim().toLowerCase());
+    for (const a of appts) {
+      const key = new Date(a.starts_at).toLocaleDateString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+      });
+      perDay.set(key, (perDay.get(key) ?? 0) + 1);
     }
+    const chart = [...perDay.entries()].map(([dia, total]) => ({ dia, total }));
 
-    const byService = services
-      .map((service) => {
-        const serviceTotal = serviceTotals.get(service.id) ?? 0;
-        return {
-          name: service.name,
-          total: serviceTotal,
-          valor: serviceTotal * service.price_cents,
-        };
-      })
-      .filter((service) => service.total > 0)
-      .sort((a, b) => b.total - a.total);
-
-    const byProfessional = professionals
-      .map((professional) => ({
-        name: professional.name,
-        total: professionalTotals.get(professional.id) ?? 0,
-      }))
-      .filter((professional) => professional.total > 0)
-      .sort((a, b) => b.total - a.total);
-
-    const chart = [...perDay.entries()].map(([dia, dayTotal]) => ({
-      dia,
-      total: dayTotal,
-    }));
+    const clients = new Set(appts.map((a) => a.customer_name.trim().toLowerCase()));
 
     return {
-      total,
-      done,
-      canceled,
+      total: appts.length,
+      done: metrics.done,
+      canceled: canceled.length,
       revenue,
       deposits,
       byService,
       byProfessional,
       chart,
       clients: clients.size,
-      ticket: done ? Math.round(revenue / done) : 0,
+      ticket: metrics.done ? Math.round(revenue / metrics.done) : 0,
     };
   }, [data]);
 
@@ -230,14 +168,11 @@ function RelatorioPage() {
         />
       </div>
 
-      <RuntimeProfiler id="ReportChartSection">
       <section className="report-luminous-card report-effect-none report-chart-card p-5 sm:p-6">
         <ReportCardTitle icon={ChartNoAxesColumnIncreasing} title="Atendimentos por dia" />
         {report.chart.length ? (
           <div className="relative z-10 mt-5 h-64">
-            <Suspense fallback={null}>
-              <ReportChart data={report.chart} />
-            </Suspense>
+            <ReportChart chart={report.chart} />
           </div>
         ) : (
           <p className="relative z-10 flex min-h-36 items-center justify-center text-center text-sm text-muted-foreground">
@@ -245,7 +180,6 @@ function RelatorioPage() {
           </p>
         )}
       </section>
-      </RuntimeProfiler>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <ListCard
